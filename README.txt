@@ -31,4 +31,50 @@ Der GET-Endpunkt `/products/` wurde erweitert um:
 - `max_price`: Filtert Produkte mit Preis ≤ max_price
 - Kombination von Filtern möglich (Kategorie + Preis)
 
+##Neu umgesetzte Aufgabe: Verwaltung der Produkte und Authentifizierung
+
+###Authentifizierung (JWT)
+1. Benutzer registrieren
+
+POST /users/
+
+{
+  "username": "testuser",
+  "password": "1234"
+}
+
+2. Login
+
+POST /token (Form Data!)
+
+username
+password
+
+Antwort:
+
+{
+  "access_token": "...",
+  "token_type": "bearer"
+}
+
+3. Token verwenden
+
+In Swagger:
+
+Klick auf Authorize
+Token einfügen
+
+Oder im Header:
+
+Authorization: Bearer <token>
+
+
+###Geschützte Endpunkte
+
+Diese benötigen ein gültiges Token:
+
+POST /products
+PUT /products/{id}
+DELETE /products/{id}
+GET /users/me
 
