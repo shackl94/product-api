@@ -1,4 +1,6 @@
-from sqlalchemy import Column, DateTime, Float, Integer, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
 
 from .database import Base
 
@@ -12,5 +14,15 @@ class Product(Base):
     price = Column(Float, nullable=False)
     category = Column(String, nullable=False)
     stock = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

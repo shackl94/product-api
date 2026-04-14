@@ -1,17 +1,26 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, engine
 from . import models, schemas
+from .auth import (
+    create_access_token,
+    get_current_active_user,
+    get_db,
+    get_password_hash,
+    get_user_by_username,
+    verify_password,
+)
+from .database import engine
 
 app = FastAPI(
     title="Product API",
-    description="API für Produktverwaltung (Starter-Version)",
-    version="0.1.0",
+    description="API für Produktverwaltung mit SQLAlchemy, JWT-Auth und Protected Endpoints",
+    version="0.2.0",
 )
 
 models.Base.metadata.create_all(bind=engine)
@@ -28,21 +37,56 @@ def ensure_stock_column() -> None:
 ensure_stock_column()
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 
+@app.post("/users/", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
+    existing_user = get_user_by_username(db, user_in.username)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+
+    user = models.User(
+        username=user_in.username,
+        hashed_password=get_password_hash(user_in.password),
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.post("/token", response_model=schemas.Token)
+def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    user = get_user_by_username(db, form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+def read_users_me(current_user: models.User = Depends(get_current_active_user)):
+    return current_user
+
+
 @app.post("/products/", response_model=schemas.ProductResponse, status_code=201)
-def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)):
+def create_product(
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user),
+):
     now = datetime.now()
     new_product = models.Product(
         name=product.name,
@@ -100,6 +144,7 @@ def update_product(
     product_id: int,
     product_update: schemas.ProductUpdate,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     product = db.get(models.Product, product_id)
     if not product:
@@ -116,7 +161,11 @@ def update_product(
 
 
 @app.delete("/products/{product_id}", status_code=204)
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user),
+):
     product = db.get(models.Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Produkt nicht gefunden")
